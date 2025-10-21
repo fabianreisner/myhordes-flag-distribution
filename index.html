@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MyHordes Flag Distribution Simulator</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><img src="assets/img/icons/skull-solid-full.svg" alt="Zombie" class="icon"> MyHordes Flag Distribution Simulator</h1>
+            <p class="subtitle">Calculate zombie attack probabilities with Monte Carlo simulation</p>
+        </header>
+
+        <div class="content">
+            <div class="panel config-panel">
+                <h2><img src="assets/img/icons/sliders-solid-full.svg" alt="Config" class="icon"> Configuration</h2>
+                
+                <form id="simulatorForm">
+                    <!-- Mode Selection -->
+                    <div class="form-group">
+                        <label class="section-label">Simulation Mode</label>
+                        <div class="mode-selector">
+                            <label class="radio-card">
+                                <input type="radio" name="mode" value="no-flags" checked>
+                                <div class="radio-content">
+                                    <strong>Mode 1: No Flags</strong>
+                                    <small>Pure random distribution (baseline)</small>
+                                </div>
+                            </label>
+                            <label class="radio-card">
+                                <input type="radio" name="mode" value="with-flags">
+                                <div class="radio-content">
+                                    <strong>Mode 2: With Flags</strong>
+                                    <small>2.5% attraction per flag holder</small>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Flag Configuration (shown only in Mode 2) -->
+                    <div id="flagConfig" class="form-group" style="display: none;">
+                        <label for="numFlags">
+                            <img src="assets/img/items/flag.gif" alt="Flag" class="icon">
+                            Number of Flag Holders
+                            <span class="help-text">Citizens who have used the flag (0-40)</span>
+                        </label>
+                        <div class="input-with-value">
+                            <input type="range" id="numFlags" name="numFlags" min="0" max="40" value="40" step="1">
+                            <span class="range-value" id="numFlagsValue">40</span>
+                        </div>
+                    </div>
+
+                    <hr class="section-divider">
+
+                    <!-- Game State -->
+                    <div class="form-group">
+                        <label class="section-label">Game State</label>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="townDay">
+                                <img src="assets/img/icons/calendar-days-solid-full.svg" alt="Calendar" class="icon">
+                                Town Day
+                                <span class="help-text">Current day -> Next day</span>
+                            </label>
+                            <input type="number" id="townDay" name="townDay" min="1" max="100" value="1">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="playersAlive">
+                                <img src="assets/img/icons/users-solid-full.svg" alt="Players" class="icon">
+                                Total Players Alive
+                                <span class="help-text">Citizens who haven't died yet</span>
+                            </label>
+                            <input type="number" id="playersAlive" name="playersAlive" min="1" max="40" value="40">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="townPopulation">
+                                <img src="assets/img/icons/campground-solid-full.svg" alt="Town" class="icon">
+                                Players in Town
+                                <span class="help-text">Citizens currently in town (must be ≤ alive)</span>
+                            </label>
+                            <input type="number" id="townPopulation" name="townPopulation" min="1" max="40" value="40">
+                        </div>
+                    </div>
+
+                    <hr class="section-divider">
+
+                    <!-- Defense -->
+                    <div class="form-group">
+                        <label for="townDefense">
+                            <img src="assets/img/home/defense.gif" alt="Defense" class="icon">
+                            Town Defense
+                            <span class="help-text">Total defense</span>
+                        </label>
+                        <input type="number" id="townDefense" name="townDefense" min="0" value="0" step="1">
+                    </div>
+
+                    <hr class="section-divider">
+
+                    <!-- Environmental Conditions -->
+                    <div class="form-group">
+                        <label class="section-label">Environmental Conditions</label>
+                    </div>
+
+                    <!-- Door State -->
+                    <div class="form-group">
+                        <label for="doorState">
+                            <img src="assets/img/home/alarm.gif" alt="Door" class="icon">
+                            Door State
+                            <span class="help-text">Time since door opened</span>
+                        </label>
+                        <div class="door-state-selector">
+                            <label class="door-option">
+                                <input type="radio" name="doorState" value="closed" checked>
+                                <span class="option-label">
+                                    <span class="option-icon"><img src="assets/img/icons/lock-solid-full.svg" alt="Locked" class="icon"></span>
+                                    <span class="option-text">Closed</span>
+                                </span>
+                            </label>
+                            <label class="door-option">
+                                <input type="radio" name="doorState" value="open-recent">
+                                <span class="option-label">
+                                    <span class="option-icon"><img src="assets/img/icons/unlock-solid-full.svg" alt="Open" class="icon"></span>
+                                    <span class="option-text">Open under 30min</span>
+                                </span>
+                            </label>
+                            <label class="door-option">
+                                <input type="radio" name="doorState" value="open-long">
+                                <span class="option-label">
+                                    <span class="option-icon"><img src="assets/img/icons/lock-open-solid-full.svg" alt="Open" class="icon"></span>
+                                    <span class="option-text">Open over 30min</span>
+                                </span>
+                            </label>
+                        </div>
+                    </div>                    <!-- Building Level -->
+                    <div class="form-group">
+                        <label for="houseLevel">
+                            <img src="assets/img/home/home_lv3.gif" alt="House" class="icon">
+                            Highest Building Level
+                            <span class="help-text">Affects active zombie factor</span>
+                        </label>
+                        <div class="input-with-value">
+                            <input type="range" id="houseLevel" name="houseLevel" min="0" max="8" value="1" step="1">
+                            <span class="range-value" id="houseLevelValue">1</span>
+                        </div>
+                        <div class="building-levels">
+                            <img src="assets/img/home/home_lv0.gif" class="level-indicator" data-level="0" alt="Level 0">
+                            <img src="assets/img/home/home_lv1.gif" class="level-indicator" data-level="1" alt="Level 1">
+                            <img src="assets/img/home/home_lv2.gif" class="level-indicator" data-level="2" alt="Level 2">
+                            <img src="assets/img/home/home_lv3.gif" class="level-indicator" data-level="3" alt="Level 3">
+                            <img src="assets/img/home/home_lv4.gif" class="level-indicator" data-level="4" alt="Level 4">
+                            <img src="assets/img/home/home_lv5.gif" class="level-indicator" data-level="5" alt="Level 5">
+                            <img src="assets/img/home/home_lv6.gif" class="level-indicator" data-level="6" alt="Level 6">
+                            <img src="assets/img/home/home_lv7.gif" class="level-indicator" data-level="7" alt="Level 7">
+                            <img src="assets/img/home/home_lv8.gif" class="level-indicator" data-level="8" alt="Level 8">
+                        </div>
+                    </div>
+
+                    <!-- Town Status -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="chaos" name="chaos">
+                                <span><img src="assets/img/icons/explosion-solid-full.svg" alt="Chaos" class="icon"> Chaos (+10)</span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="devastated" name="devastated">
+                                <span><img src="assets/img/icons/fire-solid-full.svg" alt="Devastated" class="icon"> Devastated (+10)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <hr class="section-divider">
+
+                    <!-- Simulation Settings -->
+                    <div class="form-group">
+                        <label for="simulations">
+                            <img src="assets/img/icons/dice-solid-full.svg" alt="Dice" class="icon">
+                            Number of Simulations
+                            <span class="help-text">More = higher accuracy (slower)</span>
+                        </label>
+                        <select id="simulations" name="simulations">
+                            <option value="10000">10,000 (Fast)</option>
+                            <option value="100000">100,000 (Balanced)</option>
+                            <option value="1000000" selected>1,000,000 (Accurate)</option>
+                            <option value="10000000">10,000,000 (Very Accurate)</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" class="btn-primary">
+                        <img src="assets/img/icons/calculator-solid-full.svg" alt="Calculate" class="icon"> Run Simulation
+                    </button>
+                </form>
+            </div>
+
+            <div class="panel results-panel">
+                <h2><img src="assets/img/icons/chart-simple-solid-full.svg" alt="Results" class="icon"> Results</h2>
+                <div id="results" class="results-placeholder">
+                    <div class="placeholder-icon"><img src="assets/img/icons/chart-simple-solid-full.svg" alt="Chart" style="width: 48px; height: 48px;"></div>
+                    <p>Configure your simulation and click "Run Simulation" to see results</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
