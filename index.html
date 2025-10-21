@@ -35,7 +35,7 @@
                                 <input type="radio" name="mode" value="with-flags">
                                 <div class="radio-content">
                                     <strong>Mode 2: With Flags</strong>
-                                    <small>2.5% attraction per flag holder</small>
+                                    <small>2.5% attraction per flag user</small>
                                 </div>
                             </label>
                         </div>
@@ -45,13 +45,25 @@
                     <div id="flagConfig" class="form-group" style="display: none;">
                         <label for="numFlags">
                             <img src="assets/img/items/flag.gif" alt="Flag" class="icon">
-                            Number of Flag Holders
+                            Number of flag users
                             <span class="help-text">Citizens who have used the flag (0-40)</span>
                         </label>
                         <div class="input-with-value">
                             <input type="range" id="numFlags" name="numFlags" min="0" max="40" value="40" step="1">
                             <span class="range-value" id="numFlagsValue">40</span>
                         </div>
+                    </div>
+
+                    <hr class="section-divider">
+
+                    <!-- Optional: Override Attacking Zombies -->
+                    <div class="form-group">
+                        <label for="customAttackingZombies">
+                            <img src="assets/img/icons/skull-solid-full.svg" alt="Zombies" class="icon">
+                            Override Attacking Zombies (Optional)
+                            <span class="help-text">Leave empty to calculate automatically, or enter a number to use custom value</span>
+                        </label>
+                        <input type="number" id="customAttackingZombies" name="customAttackingZombies" min="0" max="10000" placeholder="Auto-calculated" step="1">
                     </div>
 
                     <hr class="section-divider">

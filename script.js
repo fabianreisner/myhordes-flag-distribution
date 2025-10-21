@@ -55,6 +55,8 @@ document.getElementById('townPopulation').addEventListener('input', validatePlay
 document.querySelectorAll('input[name="mode"]').forEach(radio => {
     radio.addEventListener('change', (e) => {
         const flagConfig = document.getElementById('flagConfig');
+        if (!flagConfig) return; // Safety check
+        
         if (e.target.value === 'with-flags') {
             flagConfig.style.display = 'block';
         } else {
@@ -86,9 +88,11 @@ document.getElementById('simulatorForm').addEventListener('submit', async (e) =>
     }
     
     const formData = new FormData(e.target);
+    const customZombiesValue = formData.get('customAttackingZombies');
     const config = {
         mode: formData.get('mode'),
         numFlags: parseInt(formData.get('numFlags')),
+        customAttackingZombies: customZombiesValue && customZombiesValue.trim() !== '' ? parseInt(customZombiesValue) : null,
         townDay: parseInt(formData.get('townDay')),
         playersAlive: parseInt(formData.get('playersAlive')),
         townPopulation: parseInt(formData.get('townPopulation')),
@@ -140,9 +144,19 @@ function displayResults(results, config) {
     
     // Header
     html += '<div class="result-header">';
-    html += `<div class="result-mode">Mode: ${config.mode === 'with-flags' ? 'Flag Distribution (Mode 2)' : 'No Flags (Mode 1)'}</div>`;
+    const modeText = config.mode === 'with-flags' ? 'Flag Distribution (Mode 2)' : 'No Flags (Mode 1)';
+    html += `<div class="result-mode">Mode: ${modeText}</div>`;
     html += `<div>Attack Night of ${config.townDay} → ${config.townDay + 1}</div>`;
     html += '</div>';
+    
+    // Show custom zombies notice if overridden
+    if (results.usingCustomZombies) {
+        html += '<div class="stat-card" style="grid-column: 1/-1; margin-bottom: 15px; background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107;">';
+        html += '<h3 style="margin-bottom: 10px; color: #ffc107;"><img src="assets/img/icons/skull-solid-full.svg" class="icon" style="width:20px;height:20px;"> Using Custom Zombie Count</h3>';
+        html += `<div style="font-size: 0.9rem;">`;
+        html += `<strong>Overridden attacking zombies:</strong> ${results.customZombies} (skipping automatic calculation)`;
+        html += '</div></div>';
+    }
     
     // Game Conditions
     html += '<div class="stat-card" style="grid-column: 1/-1; margin-bottom: 15px;">';
@@ -174,81 +188,93 @@ function displayResults(results, config) {
         html += '</div></div>';
     }
     
-    // Attack Statistics
-    html += '<div class="result-stats">';
-    html += `
-        <div class="stat-card" style="background: rgba(220, 53, 69, 0.1); border-left: 4px solid #dc3545;">
-            <div class="stat-label">Min Total Zombies</div>
-            <div class="stat-value">${results.minTotalZombies}</div>
-            <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">Raw game value</div>
-        </div>
-        <div class="stat-card" style="background: rgba(220, 53, 69, 0.1); border-left: 4px solid #dc3545;">
-            <div class="stat-label">Average Total Zombies</div>
-            <div class="stat-value">${results.avgTotalZombies.toFixed(2)}</div>
-            <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">Before defense/active</div>
-        </div>
-        <div class="stat-card" style="background: rgba(220, 53, 69, 0.1); border-left: 4px solid #dc3545;">
-            <div class="stat-label">Max Total Zombies</div>
-            <div class="stat-value">${results.maxTotalZombies}</div>
-            <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">Raw game value</div>
-        </div>
-    `;
-    html += '</div>';
-    
-    html += '<div class="result-stats" style="margin-top: 10px;">';
-    html += `
-        <div class="stat-card">
-            <div class="stat-label">Min Attacking Zombies</div>
-            <div class="stat-value">${results.minAttacking}</div>
-            <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">After defense/active</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">Average Attacking Zombies</div>
-            <div class="stat-value">${results.avgAttacking.toFixed(2)}</div>
-            <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">Actual threats</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">Max Attacking Zombies</div>
-            <div class="stat-value">${results.maxAttacking}</div>
-            <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">After defense/active</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">Simulations Run</div>
-            <div class="stat-value">${results.simulations.toLocaleString()}</div>
-        </div>
-    `;
-    html += '</div>';
-    
-    // Defense Breakthrough Stats
-    html += '<div class="stat-card" style="grid-column: 1/-1; margin-top: 10px; background: ' + 
-            (results.defenseBrokenPct >= 50 ? 'rgba(220, 53, 69, 0.1)' : 'rgba(40, 167, 69, 0.1)') + 
-            '; border-left: 4px solid ' + 
-            (results.defenseBrokenPct >= 50 ? '#dc3545' : '#28a745') + ';">';
-    html += '<h3 style="margin-bottom: 10px; color: var(--warning);">' +
-            '<img src="assets/img/home/defense.gif" class="icon" style="width:20px;height:20px;"> ' +
-            'Defense Analysis</h3>';
-    html += `<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">`;
-    html += `<div><strong>Defense Broken:</strong> ${results.defenseBrokenPct.toFixed(2)}% of attacks</div>`;
-    html += `<div><strong>Attacks Count:</strong> ${results.attacksBrokeDefense.toLocaleString()} / ${results.simulations.toLocaleString()}</div>`;
-    html += '</div>';
-    if (results.defenseBrokenPct < 1) {
-        html += '<div style="margin-top: 10px; padding: 8px; background: rgba(40, 167, 69, 0.2); border-radius: 4px; font-size: 0.9rem;">';
-        html += '✅ <strong>Excellent defense!</strong> Town is well protected against most attacks.';
+    // Attack Statistics (skip calculations when using custom zombies)
+    if (!results.usingCustomZombies) {
+        html += '<div class="result-stats">';
+        html += `
+            <div class="stat-card" style="background: rgba(220, 53, 69, 0.1); border-left: 4px solid #dc3545;">
+                <div class="stat-label">Min Total Zombies</div>
+                <div class="stat-value">${results.minTotalZombies}</div>
+                <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">Raw game value</div>
+            </div>
+            <div class="stat-card" style="background: rgba(220, 53, 69, 0.1); border-left: 4px solid #dc3545;">
+                <div class="stat-label">Average Total Zombies</div>
+                <div class="stat-value">${results.avgTotalZombies.toFixed(2)}</div>
+                <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">Before defense/active</div>
+            </div>
+            <div class="stat-card" style="background: rgba(220, 53, 69, 0.1); border-left: 4px solid #dc3545;">
+                <div class="stat-label">Max Total Zombies</div>
+                <div class="stat-value">${results.maxTotalZombies}</div>
+                <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">Raw game value</div>
+            </div>
+        `;
         html += '</div>';
-    } else if (results.defenseBrokenPct < 25) {
-        html += '<div style="margin-top: 10px; padding: 8px; background: rgba(255, 193, 7, 0.2); border-radius: 4px; font-size: 0.9rem;">';
-        html += '⚠️ <strong>Good defense.</strong> Most attacks are stopped, but some breakthrough.';
+        
+        html += '<div class="result-stats" style="margin-top: 10px;">';
+        html += `
+            <div class="stat-card">
+                <div class="stat-label">Min Attacking Zombies</div>
+                <div class="stat-value">${results.minAttacking}</div>
+                <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">After defense/active</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Average Attacking Zombies</div>
+                <div class="stat-value">${results.avgAttacking.toFixed(2)}</div>
+                <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">Actual threats</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Max Attacking Zombies</div>
+                <div class="stat-value">${results.maxAttacking}</div>
+                <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">After defense/active</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Simulations Run</div>
+                <div class="stat-value">${results.simulations.toLocaleString()}</div>
+            </div>
+        `;
         html += '</div>';
-    } else if (results.defenseBrokenPct < 75) {
-        html += '<div style="margin-top: 10px; padding: 8px; background: rgba(255, 152, 0, 0.2); border-radius: 4px; font-size: 0.9rem;">';
-        html += '⚠️ <strong>Moderate defense.</strong> Many attacks break through - consider improving defenses.';
+        
+        // Defense Breakthrough Stats
+        html += '<div class="stat-card" style="grid-column: 1/-1; margin-top: 10px; background: ' + 
+                (results.defenseBrokenPct >= 50 ? 'rgba(220, 53, 69, 0.1)' : 'rgba(40, 167, 69, 0.1)') + 
+                '; border-left: 4px solid ' + 
+                (results.defenseBrokenPct >= 50 ? '#dc3545' : '#28a745') + ';">';
+        html += '<h3 style="margin-bottom: 10px; color: var(--warning);">' +
+                '<img src="assets/img/home/defense.gif" class="icon" style="width:20px;height:20px;"> ' +
+                'Defense Analysis</h3>';
+        html += `<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">`;
+        html += `<div><strong>Defense Broken:</strong> ${results.defenseBrokenPct.toFixed(2)}% of attacks</div>`;
+        html += `<div><strong>Attacks Count:</strong> ${results.attacksBrokeDefense.toLocaleString()} / ${results.simulations.toLocaleString()}</div>`;
+        html += '</div>';
+        if (results.defenseBrokenPct < 1) {
+            html += '<div style="margin-top: 10px; padding: 8px; background: rgba(40, 167, 69, 0.2); border-radius: 4px; font-size: 0.9rem;">';
+            html += '✅ <strong>Excellent defense!</strong> Town is well protected against most attacks.';
+            html += '</div>';
+        } else if (results.defenseBrokenPct < 25) {
+            html += '<div style="margin-top: 10px; padding: 8px; background: rgba(255, 193, 7, 0.2); border-radius: 4px; font-size: 0.9rem;">';
+            html += '⚠️ <strong>Good defense.</strong> Most attacks are stopped, but some breakthrough.';
+            html += '</div>';
+        } else if (results.defenseBrokenPct < 75) {
+            html += '<div style="margin-top: 10px; padding: 8px; background: rgba(255, 152, 0, 0.2); border-radius: 4px; font-size: 0.9rem;">';
+            html += '⚠️ <strong>Moderate defense.</strong> Many attacks break through - consider improving defenses.';
+            html += '</div>';
+        } else {
+            html += '<div style="margin-top: 10px; padding: 8px; background: rgba(220, 53, 69, 0.2); border-radius: 4px; font-size: 0.9rem;">';
+            html += '🔴 <strong>Weak defense!</strong> Most attacks break through - urgent defense improvements needed.';
+            html += '</div>';
+        }
         html += '</div>';
     } else {
-        html += '<div style="margin-top: 10px; padding: 8px; background: rgba(220, 53, 69, 0.2); border-radius: 4px; font-size: 0.9rem;">';
-        html += '🔴 <strong>Weak defense!</strong> Most attacks break through - urgent defense improvements needed.';
+        // For custom zombies, just show simulation count
+        html += '<div class="result-stats" style="margin-top: 10px;">';
+        html += `
+            <div class="stat-card">
+                <div class="stat-label">Simulations Run</div>
+                <div class="stat-value">${results.simulations.toLocaleString()}</div>
+            </div>
+        `;
         html += '</div>';
     }
-    html += '</div>';
     
     // Distribution Probabilities
     html += '<div class="probability-bars">';

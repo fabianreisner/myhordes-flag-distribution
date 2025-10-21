@@ -5,9 +5,12 @@ header('Content-Type: application/json');
 $input = json_decode(file_get_contents('php://input'), true);
 
 // Extract configuration
-$enable_flags = $input['mode'] === 'with-flags';
+$mode = $input['mode'];
+$enable_flags = $mode === 'with-flags';
+$custom_attacking_zombies = isset($input['customAttackingZombies']) && $input['customAttackingZombies'] !== null ? (int)$input['customAttackingZombies'] : null;
+$use_custom_zombies = $custom_attacking_zombies !== null;
 $num_flags = (int)$input['numFlags'];
-$town_day = (int)$input['townDay']+1;
+$town_day = (int)$input['townDay'];
 $players_alive = (int)$input['playersAlive'];
 $town_population = (int)$input['townPopulation'];
 $town_defense = (int)$input['townDefense'];
@@ -89,6 +92,10 @@ function calculateAttackingZombies($town_day, $players_alive, $defense, $door_op
     // Calculate base zombies using Season 18 formula
     $total_zombies = calculateTotalZombies($town_day, $attack_mode);
     
+    return applyDefenseAndActiveFactor($total_zombies, $defense, $door_open, $players_alive, $door_state_seconds, $house_level, $chaos, $devastated, $town_population);
+}
+
+function applyDefenseAndActiveFactor($total_zombies, $defense, $door_open, $players_alive, $door_state_seconds, $house_level, $chaos, $devastated, $town_population) {
     // Calculate overflow after defense - BUT only if door is closed!
     // If door is open, defense doesn't count
     if ($door_open) {
@@ -134,32 +141,55 @@ $total_remaining_distributed = 0;
 $attacks_broke_defense = 0;
 
 for ($sim = 0; $sim < $simulations; $sim++) {
-    // Calculate total zombies (actual game value)
-    $total_zombies = calculateTotalZombies($town_day, 'normal');
-    
-    $total_zombies_sum += $total_zombies;
-    $min_total_zombies = min($min_total_zombies, $total_zombies);
-    $max_total_zombies = max($max_total_zombies, $total_zombies);
-    
-    // Calculate attacking zombies (after defense and active factor)
-    $attacking = calculateAttackingZombies(
-        $town_day, 
-        $players_alive, 
-        $town_defense, 
-        $door_open, 
-        $door_state_seconds, 
-        $house_level, 
-        $chaos, 
-        $devastated,
-        $town_population,
-        'normal'  // attack_mode: 'easy', 'normal', or 'hard'
-    );
+    // Calculate total zombies (actual game value) - unless overridden
+    if ($use_custom_zombies) {
+        // Use custom value as total zombies (before defense and active factor)
+        $total_zombies = $custom_attacking_zombies;
+        
+        // Apply defense and active factor just like normal calculation
+        $attacking = applyDefenseAndActiveFactor(
+            $total_zombies,
+            $town_defense,
+            $door_open,
+            $players_alive,
+            $door_state_seconds,
+            $house_level,
+            $chaos,
+            $devastated,
+            $town_population
+        );
+        
+        // Track for statistics (don't skip this when using custom zombies!)
+        $total_zombies_sum += $total_zombies;
+        $min_total_zombies = min($min_total_zombies, $total_zombies);
+        $max_total_zombies = max($max_total_zombies, $total_zombies);
+    } else {
+        $total_zombies = calculateTotalZombies($town_day, 'normal');
+        
+        $total_zombies_sum += $total_zombies;
+        $min_total_zombies = min($min_total_zombies, $total_zombies);
+        $max_total_zombies = max($max_total_zombies, $total_zombies);
+        
+        // Calculate attacking zombies (after defense and active factor)
+        $attacking = calculateAttackingZombies(
+            $town_day, 
+            $players_alive, 
+            $town_defense, 
+            $door_open, 
+            $door_state_seconds, 
+            $house_level, 
+            $chaos, 
+            $devastated,
+            $town_population,
+            'normal'  // attack_mode: 'easy', 'normal', or 'hard'
+        );
+    }
     
     $average_attacking += $attacking;
     $min_attacking = min($min_attacking, $attacking);
     $max_attacking = max($max_attacking, $attacking);
     
-    // Skip distribution if no zombies break through defense
+    // Skip distribution if no zombies
     if ($attacking <= 0) {
         continue;
     }
@@ -184,34 +214,32 @@ for ($sim = 0; $sim < $simulations; $sim++) {
             if (!is_array($flag_holder_indices)) $flag_holder_indices = [$flag_holder_indices];
         }
         
-        // Track flag holders for later
+        // Track flag users for later
         foreach ($flag_holder_indices as $idx) {
             $flag_holder_set[$idx] = true;
         }
         
-        // Calculate how many zombies are attracted per flag (2.5% each)
-        // This is the total that gets REMOVED from the pool, but we need to track
-        // how it should be distributed among flag holders
-        $total_flag_attraction = $attacking * 0.025 * count($flag_holder_indices);
+        // Flag distribution logic:
+        // 1. Divide active zombies by number of flags and round normally
+        $zombies_per_flag = round($attacking / count($flag_holder_indices));
         
-        // Round the per-flag amount for statistics display
-        $zombies_per_flag = round($attacking * 0.025, 2);
-        
-        $total_zombies_per_flag += $zombies_per_flag;
-        $total_attracted += $total_flag_attraction;
-        
-        // Remaining zombies are distributed to everyone (including flag holders)
-        // Flag holders will get their proportional share of the total_flag_attraction
-        // distributed among themselves
-        $remaining_attacking = max(0, $attacking - $total_flag_attraction);
-        
-        // Now we need to split the attracted zombies among flag holders
-        // Each flag holder gets an equal share of the total attracted amount
-        $zombies_per_flag_holder = $total_flag_attraction / count($flag_holder_indices);
+        // 2. Distribute to each flag user, subtracting from pool
+        $remaining_pool = $attacking;
+        $total_given_to_flags = 0;
         
         foreach ($flag_holder_indices as $idx) {
-            $flag_holders[$idx] = $zombies_per_flag_holder;
+            $zombies_for_this_flag = min($remaining_pool, $zombies_per_flag);
+            $flag_holders[$idx] = $zombies_for_this_flag;
+            $remaining_pool -= $zombies_for_this_flag;
+            $total_given_to_flags += $zombies_for_this_flag;
         }
+        
+        // Track statistics
+        $total_zombies_per_flag += $zombies_per_flag;
+        $total_attracted += $total_given_to_flags;
+        
+        // No remaining zombies - all went to flag users
+        $remaining_attacking = 0;
     }
     
     // Track the remaining for proper statistics
@@ -220,10 +248,10 @@ for ($sim = 0; $sim < $simulations; $sim++) {
     // Weighted random distribution
     $attack_counts = array_fill(0, $num_targets, 0);
     
-    // If we have flags, flag holders get the attracted zombies split among them
+    // If we have flags, flag users get the attracted zombies split among them
     // and remaining zombies are distributed to everyone
     if (!empty($flag_holders)) {
-        // Distribute remaining zombies to everyone (including flag holders)
+        // Distribute remaining zombies to everyone (including flag users)
         if ($remaining_attacking > 0) {
             $repartition = array_map(fn() => mt_rand() / mt_getrandmax(), range(0, $num_targets - 1));
             
@@ -246,7 +274,7 @@ for ($sim = 0; $sim < $simulations; $sim++) {
             }
         }
         
-        // Add flag-attracted zombies to flag holders
+        // Add flag-attracted zombies to flag users
         foreach ($flag_holders as $idx => $flag_zombies) {
             $attack_counts[$idx] += round($flag_zombies);
         }
@@ -273,7 +301,8 @@ for ($sim = 0; $sim < $simulations; $sim++) {
         }
     }
     
-    // Count occurrences - track full distribution
+    // Track all people's attack counts - full distribution
+    // This tells us: "X% of person-night combinations received Y attacks"
     foreach ($attack_counts as $count) {
         if (!isset($attack_distribution[$count])) {
             $attack_distribution[$count] = 0;
@@ -281,6 +310,7 @@ for ($sim = 0; $sim < $simulations; $sim++) {
         $attack_distribution[$count]++;
     }
     
+    // Also track people who got 0 attacks
     $zero_attacks = $num_targets - count(array_filter($attack_counts, fn($c) => $c > 0));
     if (!isset($attack_distribution[0])) {
         $attack_distribution[0] = 0;
@@ -346,9 +376,11 @@ $defense_broken_pct = ($attacks_broke_defense / $simulations) * 100;
 
 // Prepare response
 $response = [
-    'avgTotalZombies' => $total_zombies_sum / $simulations,
-    'minTotalZombies' => $min_total_zombies,
-    'maxTotalZombies' => $max_total_zombies,
+    'mode' => $mode,
+    'usingCustomZombies' => $use_custom_zombies,
+    'avgTotalZombies' => $use_custom_zombies ? $custom_attacking_zombies : $total_zombies_sum / $simulations,
+    'minTotalZombies' => $use_custom_zombies ? $custom_attacking_zombies : $min_total_zombies,
+    'maxTotalZombies' => $use_custom_zombies ? $custom_attacking_zombies : $max_total_zombies,
     'avgAttacking' => $average_attacking / $simulations,
     'minAttacking' => $min_attacking,
     'maxAttacking' => $max_attacking,
@@ -357,7 +389,8 @@ $response = [
     'simulations' => $simulations,
     'targetsPerNight' => $num_in_town,
     'distribution' => $distribution,
-    'distributionStats' => $distribution_stats
+    'distributionStats' => $distribution_stats,
+    'customZombies' => $use_custom_zombies ? $custom_attacking_zombies : null
 ];
 
 if ($enable_flags) {

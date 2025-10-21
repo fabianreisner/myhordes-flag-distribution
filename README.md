@@ -29,7 +29,7 @@ Edit the configuration section at the top of `distribution.php`:
 ```php
 // Mode selection
 $enable_flags = true;          // false = Mode 1 (no flags), true = Mode 2 (flags)
-$num_flags = 3;                // Number of flag holders
+$num_flags = 3;                // Number of flag users
 
 // Game state
 $town_day = 46;                // Current day +1 for night behavior
@@ -126,11 +126,11 @@ in_town = min(10 + 2 * floor(max(0, day - 10) / 2), total_alive)
 - Days 13-14: Up to 14 targets, etc.
 
 ### Flag Attraction (Mode 2)
-Each flag holder attracts: `round(attacking * 0.025)` zombies (2.5%)
+Each flag user attracts: `round(attacking * 0.025)` zombies (2.5%)
 
 These are subtracted from the main pool, then added back after random distribution.
 
-**Important**: Flag holders receive guaranteed attraction + their random share!
+**Important**: flag users receive guaranteed attraction + their random share!
 
 ### Weighted Random Distribution
 1. Each target gets random weight (0.0-1.0)

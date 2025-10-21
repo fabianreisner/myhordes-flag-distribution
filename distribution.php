@@ -172,7 +172,7 @@ for ($sim = 0; $sim < $simulations; $sim++) {
         $zombies_per_flag = (int)round($attacking * 0.025);
         $total_attracted = $zombies_per_flag * count($flag_holder_indices);
         
-        // Store flag holders and their guaranteed zombies
+        // Store flag users and their guaranteed zombies
         foreach ($flag_holder_indices as $idx) {
             $flag_holders[$idx] = $zombies_per_flag;
         }
@@ -214,7 +214,7 @@ for ($sim = 0; $sim < $simulations; $sim++) {
         $remaining_attacks--;
     }
     
-    // Add flag zombies to flag holders (they get guaranteed attraction + their random share)
+    // Add flag zombies to flag users (they get guaranteed attraction + their random share)
     foreach ($flag_holders as $idx => $flag_zombies) {
         $attack_counts[$idx] += $flag_zombies;
     }

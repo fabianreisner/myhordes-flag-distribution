@@ -235,6 +235,7 @@ input[type="range"]::-moz-range-thumb {
     border-radius: 8px;
     transition: all 0.3s;
     text-align: center;
+    height: 100%;
 }
 
 .radio-card input[type="radio"]:checked + .radio-content {
