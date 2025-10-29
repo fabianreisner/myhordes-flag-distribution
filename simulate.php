@@ -122,7 +122,7 @@ function pick(array $a, int $num, bool $force_array = false): mixed {
 // RUN SIMULATION
 // ============================================================================
 
-$all_targets = range(1, $players_alive);
+$all_targets = range(1, $town_population);
 $num_in_town = min(
     10 + 2 * floor(max(0, $town_day - 10) / 2),
     ceil(count($all_targets) * 1.0)
@@ -205,8 +205,11 @@ for ($sim = 0; $sim < $simulations; $sim++) {
     $remaining_attacking = $attacking;
     
     if ($enable_flags && $num_flags > 0 && $num_targets > 0) {
+        // Can't assign more flags than there are targets in town
         $num_flags_to_assign = min($num_flags, $num_targets);
         
+        // TODO: Verify if the game actually randomizes which players get flags each night,
+        // or if flags stay with specific players. This logic assigns flags randomly.
         if ($num_flags_to_assign === 1) {
             $flag_holder_indices = [mt_rand(0, $num_targets - 1)];
         } else {
@@ -214,16 +217,16 @@ for ($sim = 0; $sim < $simulations; $sim++) {
             if (!is_array($flag_holder_indices)) $flag_holder_indices = [$flag_holder_indices];
         }
         
-        // Track flag users for later
+        // Track flag holders for later
         foreach ($flag_holder_indices as $idx) {
             $flag_holder_set[$idx] = true;
         }
         
         // Flag distribution logic:
-        // 1. Divide active zombies by number of flags and round normally
-        $zombies_per_flag = round($attacking / count($flag_holder_indices));
-        
-        // 2. Distribute to each flag user, subtracting from pool
+        // Each flag attracts 2.5% of attacking zombies
+        $zombies_per_flag = $attacking * 0.025;
+
+        // 2. Distribute to each flag holder, subtracting from pool
         $remaining_pool = $attacking;
         $total_given_to_flags = 0;
         
@@ -234,12 +237,12 @@ for ($sim = 0; $sim < $simulations; $sim++) {
             $total_given_to_flags += $zombies_for_this_flag;
         }
         
-        // Track statistics
-        $total_zombies_per_flag += $zombies_per_flag;
-        $total_attracted += $total_given_to_flags;
+        // Track statistics - use actual distributed amounts
+        // $total_zombies_per_flag += $zombies_per_flag;  // Still track the target per flag
+        $total_attracted += $total_given_to_flags;      // Track what was actually given
         
-        // No remaining zombies - all went to flag users
-        $remaining_attacking = 0;
+        // Remaining zombies after flag distribution
+        $remaining_attacking = $remaining_pool;
     }
     
     // Track the remaining for proper statistics
@@ -248,10 +251,10 @@ for ($sim = 0; $sim < $simulations; $sim++) {
     // Weighted random distribution
     $attack_counts = array_fill(0, $num_targets, 0);
     
-    // If we have flags, flag users get the attracted zombies split among them
+    // If we have flags, flag holders get the attracted zombies split among them
     // and remaining zombies are distributed to everyone
     if (!empty($flag_holders)) {
-        // Distribute remaining zombies to everyone (including flag users)
+        // Distribute remaining zombies to everyone (including flag holders)
         if ($remaining_attacking > 0) {
             $repartition = array_map(fn() => mt_rand() / mt_getrandmax(), range(0, $num_targets - 1));
             
@@ -274,7 +277,7 @@ for ($sim = 0; $sim < $simulations; $sim++) {
             }
         }
         
-        // Add flag-attracted zombies to flag users
+        // Add flag-attracted zombies to flag holders
         foreach ($flag_holders as $idx => $flag_zombies) {
             $attack_counts[$idx] += round($flag_zombies);
         }
@@ -301,26 +304,20 @@ for ($sim = 0; $sim < $simulations; $sim++) {
         }
     }
     
-    // Track all people's attack counts - full distribution
-    // This tells us: "X% of person-night combinations received Y attacks"
-    foreach ($attack_counts as $count) {
-        if (!isset($attack_distribution[$count])) {
-            $attack_distribution[$count] = 0;
-        }
-        $attack_distribution[$count]++;
-    }
+    // Track the maximum attacks any single person received in this simulation
+    // This tells us: "In X% of nights, the worst-hit person got Y attacks"
+    $max_attacks_this_sim = max($attack_counts);
     
-    // Also track people who got 0 attacks
-    $zero_attacks = $num_targets - count(array_filter($attack_counts, fn($c) => $c > 0));
-    if (!isset($attack_distribution[0])) {
-        $attack_distribution[0] = 0;
+    if (!isset($attack_distribution[$max_attacks_this_sim])) {
+        $attack_distribution[$max_attacks_this_sim] = 0;
     }
-    $attack_distribution[0] += $zero_attacks;
+    $attack_distribution[$max_attacks_this_sim]++;
 }
 
 // Calculate probabilities (only when defense was broken)
 $total_counts = array_sum($attack_distribution);
 $distribution = [];
+$cumulative_distribution = [];
 $distribution_stats = [
     'mode' => 0,
     'mode_value' => 0,
@@ -334,11 +331,19 @@ if ($total_counts > 0) {
     // Sort by attack count
     ksort($attack_distribution);
     
-    // Calculate probabilities and find mode (excluding 0 attacks for peak detection)
+    // Calculate individual probabilities, cumulative probabilities, and find mode
+    $cumulative_count = 0;
     $max_prob = 0;
+    
     foreach ($attack_distribution as $attacks => $count) {
+        // Individual probability (chance of getting exactly this many attacks)
         $prob = $count / $total_counts;
         $distribution[$attacks] = $prob;
+        
+        // Cumulative probability (chance of getting this many attacks or fewer)
+        $cumulative_count += $count;
+        $cumulative_prob = $cumulative_count / $total_counts;
+        $cumulative_distribution[$attacks] = $cumulative_prob;
         
         // Find mode (peak) - exclude 0 attacks as they're not part of the actual attack distribution
         if ($attacks > 0 && $prob > $max_prob) {
@@ -369,6 +374,7 @@ if ($total_counts > 0) {
 } else {
     // If defense never broken, all probabilities are 0
     $distribution = [];
+    $cumulative_distribution = [];
 }
 
 // Calculate percentage of attacks that broke defense
@@ -389,12 +395,13 @@ $response = [
     'simulations' => $simulations,
     'targetsPerNight' => $num_in_town,
     'distribution' => $distribution,
+    'cumulativeDistribution' => $cumulative_distribution,
     'distributionStats' => $distribution_stats,
     'customZombies' => $use_custom_zombies ? $custom_attacking_zombies : null
 ];
 
 if ($enable_flags) {
-    $response['zombiesPerFlag'] = $total_zombies_per_flag / $simulations;
+    $response['zombiesPerFlag'] = ($total_attracted / $simulations) / $num_flags;
     $response['totalAttracted'] = $total_attracted / $simulations;
     $response['remainingForDistribution'] = $total_remaining_distributed / $simulations;
 }

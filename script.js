@@ -182,7 +182,8 @@ function displayResults(results, config) {
         html += '<h3 style="margin-bottom: 10px; color: var(--warning);"><img src="assets/img/items/flag.gif" class="icon" style="width:20px;height:20px;"> Flag Configuration</h3>';
         html += `<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">`;
         html += `<div><strong>Flags:</strong> ${config.numFlags}</div>`;
-        html += `<div><strong>Per Flag:</strong> ~${results.zombiesPerFlag.toFixed(2)} zombies (2.5%)</div>`;
+        const flagPercentage = (results.zombiesPerFlag / results.avgAttacking * 100).toFixed(2);
+        html += `<div><strong>Per Flag:</strong> ~${results.zombiesPerFlag.toFixed(2)} zombies (${flagPercentage}%)</div>`;
         html += `<div><strong>Total Attracted:</strong> ~${results.totalAttracted.toFixed(2)}</div>`;
         html += `<div><strong>Remaining:</strong> ~${results.remainingForDistribution.toFixed(2)}</div>`;
         html += '</div></div>';
@@ -321,9 +322,16 @@ function displayResults(results, config) {
             prob: prob
         })).sort((a, b) => a.attacks - b.attacks);
         
+        // Convert cumulative distribution for chart
+        const cumulativeArray = Object.entries(results.cumulativeDistribution).map(([attacks, cumProb]) => ({
+            attacks: parseInt(attacks),
+            cumProb: cumProb
+        })).sort((a, b) => a.attacks - b.attacks);
+        
         // Store data for chart rendering after HTML is inserted
         window.chartData = {
             distArray: distArray,
+            cumulativeArray: cumulativeArray,
             mode: results.distributionStats.mode,
             p95: results.distributionStats.p95,
             p99: results.distributionStats.p99
@@ -440,11 +448,34 @@ function renderDistributionChart(chartData) {
         distributionChartInstance.destroy();
     }
     
-    const { distArray, mode, p95, p99 } = chartData;
+    const { distArray, cumulativeArray, mode, p95, p99 } = chartData;
     
     // No smoothing - use raw data for authentic bell curve
     const labels = distArray.map(d => d.attacks);
     const data = distArray.map(d => d.prob * 100); // Convert to percentage
+    
+    // Create lookup map for cumulative probabilities
+    const cumulativeMap = {};
+    cumulativeArray.forEach(item => {
+        cumulativeMap[item.attacks] = item.cumProb;
+    });
+    
+    // Debug: Check what cumulative probability we have at the percentile markers
+    console.log('=== PERCENTILE DEBUG ===');
+    console.log('p95 attack value:', p95);
+    console.log('Cumulative at p95:', cumulativeMap[p95] ? (cumulativeMap[p95] * 100).toFixed(2) + '%' : 'NOT FOUND');
+    console.log('p99 attack value:', p99);
+    console.log('Cumulative at p99:', cumulativeMap[p99] ? (cumulativeMap[p99] * 100).toFixed(2) + '%' : 'NOT FOUND');
+    console.log('All labels:', labels.slice(0, 20), '...');
+    console.log('Total labels:', labels.length);
+    
+    // Find what the cumulative distribution looks like around p95
+    console.log('\nCumulative around p95:');
+    cumulativeArray.forEach(item => {
+        if (item.attacks >= p95 - 5 && item.attacks <= p95 + 5) {
+            console.log(`  ${item.attacks} attacks: ${(item.cumProb * 100).toFixed(2)}%`);
+        }
+    });
     
     // Create gradient
     const canvas = ctx.getContext('2d');
@@ -454,6 +485,14 @@ function renderDistributionChart(chartData) {
     
     // Find peak index for highlighting
     const peakIndex = distArray.findIndex(d => d.attacks === mode);
+    
+    // Find the INDEX in the labels array for percentile markers
+    // Chart.js annotation uses array indices, not label values!
+    const p95Index = labels.findIndex(label => label === p95);
+    const p99Index = labels.findIndex(label => label === p99);
+    
+    console.log('p95 index in labels array:', p95Index, '(attack value:', p95, ')');
+    console.log('p99 index in labels array:', p99Index, '(attack value:', p99, ')');
     
     distributionChartInstance = new Chart(ctx, {
         type: 'line',
@@ -493,7 +532,14 @@ function renderDistributionChart(chartData) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `${context.parsed.y.toFixed(2)}% chance of ${context.label} attacks`;
+                            const attacks = context.label;
+                            const individualProb = context.parsed.y.toFixed(2);
+                            const cumulativeProb = cumulativeMap[attacks] ? (cumulativeMap[attacks] * 100).toFixed(2) : '0.00';
+                            
+                            return [
+                                `Individual: ${individualProb}% chance of exactly ${attacks} attacks`,
+                                `Cumulative: ${cumulativeProb}% chance of ${attacks} or fewer attacks`
+                            ];
                         }
                     }
                 },
@@ -501,8 +547,8 @@ function renderDistributionChart(chartData) {
                     annotations: {
                         p95Line: {
                             type: 'line',
-                            xMin: p95,
-                            xMax: p95,
+                            xMin: p95Index,
+                            xMax: p95Index,
                             borderColor: 'rgba(255, 193, 7, 0.8)',
                             borderWidth: 2,
                             borderDash: [5, 5],
@@ -520,8 +566,8 @@ function renderDistributionChart(chartData) {
                         },
                         p99Line: {
                             type: 'line',
-                            xMin: p99,
-                            xMax: p99,
+                            xMin: p99Index,
+                            xMax: p99Index,
                             borderColor: 'rgba(220, 53, 69, 0.8)',
                             borderWidth: 2,
                             borderDash: [5, 5],
