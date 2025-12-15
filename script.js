@@ -51,6 +51,62 @@ function validatePlayerCounts() {
 document.getElementById('playersAlive').addEventListener('input', validatePlayerCounts);
 document.getElementById('townPopulation').addEventListener('input', validatePlayerCounts);
 
+// Parse defense tiers from input string
+// Formats supported: "38x60, 2x61" or "38*60, 2*61" or "60:38, 61:2"
+function parseDefenseTiers(input) {
+    if (!input || input.trim() === '') return [];
+    
+    const tiers = [];
+    const parts = input.split(/[,;]/);
+    
+    for (const part of parts) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+        
+        // Try format: "38x60" or "38*60" (count x defense)
+        let match = trimmed.match(/^(\d+)\s*[xX*]\s*(\d+)$/);
+        if (match) {
+            tiers.push({ count: parseInt(match[1]), defense: parseInt(match[2]) });
+            continue;
+        }
+        
+        // Try format: "60:38" (defense : count)
+        match = trimmed.match(/^(\d+)\s*:\s*(\d+)$/);
+        if (match) {
+            tiers.push({ count: parseInt(match[2]), defense: parseInt(match[1]) });
+            continue;
+        }
+        
+        // Try format: just a number (assume count of 1)
+        match = trimmed.match(/^(\d+)$/);
+        if (match) {
+            tiers.push({ count: 1, defense: parseInt(match[1]) });
+        }
+    }
+    
+    return tiers;
+}
+
+// Update defense tiers preview
+function updateDefenseTiersPreview() {
+    const input = document.getElementById('personalDefenseTiers').value;
+    const preview = document.getElementById('defenseTiersPreview');
+    const tiers = parseDefenseTiers(input);
+    
+    if (tiers.length === 0) {
+        preview.textContent = '';
+        return;
+    }
+    
+    const totalCitizens = tiers.reduce((sum, t) => sum + t.count, 0);
+    const minDef = Math.min(...tiers.map(t => t.defense));
+    const tierText = tiers.map(t => `${t.count}×${t.defense}`).join(', ');
+    preview.innerHTML = `<strong>${totalCitizens} citizens:</strong> ${tierText} | <strong>Lowest:</strong> ${minDef} def`;
+}
+
+// Add listener for defense tiers input
+document.getElementById('personalDefenseTiers')?.addEventListener('input', updateDefenseTiersPreview);
+
 // Toggle flag configuration visibility
 document.querySelectorAll('input[name="mode"]').forEach(radio => {
     radio.addEventListener('change', (e) => {
@@ -89,6 +145,11 @@ document.getElementById('simulatorForm').addEventListener('submit', async (e) =>
     
     const formData = new FormData(e.target);
     const customZombiesValue = formData.get('customAttackingZombies');
+    
+    // Parse personal defense tiers (e.g., "38x60, 2x61" -> [{count: 38, defense: 60}, {count: 2, defense: 61}])
+    const defenseTiersInput = formData.get('personalDefenseTiers') || '';
+    const personalDefenseTiers = parseDefenseTiers(defenseTiersInput);
+    
     const config = {
         mode: formData.get('mode'),
         numFlags: parseInt(formData.get('numFlags')),
@@ -101,7 +162,8 @@ document.getElementById('simulatorForm').addEventListener('submit', async (e) =>
         houseLevel: parseInt(formData.get('houseLevel')),
         chaos: formData.get('chaos') === 'on',
         devastated: formData.get('devastated') === 'on',
-        simulations: parseInt(formData.get('simulations'))
+        simulations: parseInt(formData.get('simulations')),
+        personalDefenseTiers: personalDefenseTiers
     };
     
     // Show loading
@@ -265,6 +327,47 @@ function displayResults(results, config) {
             html += '</div>';
         }
         html += '</div>';
+        
+        // Survival Statistics (if personal defense tiers were provided)
+        if (results.survivalStats) {
+            const stats = results.survivalStats;
+            const survivalColor = stats.survivalRate >= 95 ? '#28a745' : 
+                                  stats.survivalRate >= 75 ? '#ffc107' : '#dc3545';
+            const survivalBg = stats.survivalRate >= 95 ? 'rgba(40, 167, 69, 0.1)' : 
+                               stats.survivalRate >= 75 ? 'rgba(255, 193, 7, 0.1)' : 'rgba(220, 53, 69, 0.1)';
+            
+            html += `<div class="stat-card" style="grid-column: 1/-1; margin-top: 10px; background: ${survivalBg}; border-left: 4px solid ${survivalColor};">`;
+            html += '<h3 style="margin-bottom: 10px; color: var(--warning);">' +
+                    '<img src="assets/img/icons/shield-halved-solid-full.svg" class="icon" style="width:20px;height:20px;"> ' +
+                    'Survival Analysis</h3>';
+            html += `<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">`;
+            html += `<div><strong>Lowest Personal Def:</strong> ${stats.lowestPersonalDefense}</div>`;
+            html += `<div><strong>Citizens Tracked:</strong> ${stats.totalCitizensTracked}</div>`;
+            html += `<div><strong>Survival Rate:</strong> <span style="color: ${survivalColor}; font-weight: bold;">${stats.survivalRate.toFixed(2)}%</span></div>`;
+            html += `<div><strong>Death Probability:</strong> ${stats.deathProbability.toFixed(2)}%</div>`;
+            html += `<div><strong>Sims with Deaths:</strong> ${stats.simulationsWithDeaths.toLocaleString()}</div>`;
+            html += `<div><strong>Avg Deaths (when occur):</strong> ${stats.avgDeathsWhenOccur.toFixed(2)}</div>`;
+            html += '</div>';
+            
+            if (stats.survivalRate >= 99) {
+                html += '<div style="margin-top: 10px; padding: 8px; background: rgba(40, 167, 69, 0.2); border-radius: 4px; font-size: 0.9rem;">';
+                html += '✅ <strong>Excellent!</strong> Almost no risk of death. Personal defenses are sufficient.';
+                html += '</div>';
+            } else if (stats.survivalRate >= 95) {
+                html += '<div style="margin-top: 10px; padding: 8px; background: rgba(40, 167, 69, 0.2); border-radius: 4px; font-size: 0.9rem;">';
+                html += '✅ <strong>Very Good!</strong> Low risk of death, but not impossible.';
+                html += '</div>';
+            } else if (stats.survivalRate >= 75) {
+                html += '<div style="margin-top: 10px; padding: 8px; background: rgba(255, 193, 7, 0.2); border-radius: 4px; font-size: 0.9rem;">';
+                html += '⚠️ <strong>Risky!</strong> Significant chance of deaths. Consider improving personal defenses.';
+                html += '</div>';
+            } else {
+                html += '<div style="margin-top: 10px; padding: 8px; background: rgba(220, 53, 69, 0.2); border-radius: 4px; font-size: 0.9rem;">';
+                html += '🔴 <strong>Dangerous!</strong> High probability of deaths. Urgent action needed.';
+                html += '</div>';
+            }
+            html += '</div>';
+        }
     } else {
         // For custom zombies, just show simulation count
         html += '<div class="result-stats" style="margin-top: 10px;">';
