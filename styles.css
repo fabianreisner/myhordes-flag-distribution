@@ -145,6 +145,7 @@ img.icon[src$=".png"] {
     image-rendering: crisp-edges;
 }
 
+input[type="text"],
 input[type="number"],
 input[type="range"],
 select {
@@ -157,10 +158,17 @@ select {
     font-size: 1rem;
 }
 
+input[type="text"]:focus,
 input[type="number"]:focus,
 select:focus {
     outline: none;
     border-color: var(--primary);
+}
+
+input[type="text"]::placeholder,
+input[type="number"]::placeholder {
+    color: var(--text-muted);
+    opacity: 0.7;
 }
 
 input[type="range"] {
@@ -372,6 +380,27 @@ input[type="range"]::-moz-range-thumb {
 
 .btn-primary:active {
     transform: translateY(0);
+}
+
+.btn-secondary {
+    padding: 15px 20px;
+    background: var(--bg-light);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-secondary:hover {
+    background: var(--bg-panel);
+    color: var(--text);
+    border-color: var(--warning);
+}
+
+.btn-secondary:active {
+    transform: translateY(1px);
 }
 
 /* Results */

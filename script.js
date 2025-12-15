@@ -1,3 +1,259 @@
+// ============================================================================
+// LOCAL STORAGE PERSISTENCE
+// ============================================================================
+
+const STORAGE_KEY = 'myhordes-simulator-config';
+let isLoadingValues = false;  // Flag to prevent saving during load
+
+// Default values for all form fields
+const defaultValues = {
+    mode: 'no-flags',
+    numFlags: 40,
+    customAttackingZombies: '',
+    townDay: 1,
+    playersAlive: 40,
+    townPopulation: 40,
+    townDefense: 0,
+    personalDefenseTiers: '',
+    doorState: 'closed',
+    houseLevel: 0,
+    chaos: false,
+    devastated: false,
+    simulations: 1000000
+};
+
+// Save current form values to localStorage
+function saveFormValues() {
+    // Don't save while we're loading values (would overwrite with defaults)
+    if (isLoadingValues) {
+        console.log('[DEBUG] saveFormValues skipped - currently loading');
+        return;
+    }
+    const values = {
+        mode: document.querySelector('input[name="mode"]:checked')?.value || defaultValues.mode,
+        numFlags: parseInt(document.getElementById('numFlags').value),
+        customAttackingZombies: document.getElementById('customAttackingZombies').value,
+        townDay: parseInt(document.getElementById('townDay').value),
+        playersAlive: parseInt(document.getElementById('playersAlive').value),
+        townPopulation: parseInt(document.getElementById('townPopulation').value),
+        townDefense: parseInt(document.getElementById('townDefense').value),
+        personalDefenseTiers: document.getElementById('personalDefenseTiers').value,
+        doorState: document.querySelector('input[name="doorState"]:checked')?.value || defaultValues.doorState,
+        houseLevel: parseInt(document.getElementById('houseLevel').value),
+        chaos: document.getElementById('chaos').checked,
+        devastated: document.getElementById('devastated').checked,
+        simulations: parseInt(document.getElementById('simulations').value)
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(values));
+}
+
+// Load saved values from localStorage
+function loadFormValues() {
+    isLoadingValues = true;  // Prevent saving during load
+    console.log('[DEBUG] loadFormValues called');
+    const saved = localStorage.getItem(STORAGE_KEY);
+    console.log('[DEBUG] Raw saved data:', saved);
+    if (!saved) {
+        console.log('[DEBUG] No saved data found, returning');
+        isLoadingValues = false;  // Re-enable saving
+        return;
+    }
+    
+    try {
+        const values = JSON.parse(saved);
+        console.log('[DEBUG] Parsed values:', values);
+        
+        // Mode
+        const modeRadio = document.querySelector(`input[name="mode"][value="${values.mode}"]`);
+        if (modeRadio) {
+            modeRadio.checked = true;
+            // Trigger change event to show/hide flag config
+            modeRadio.dispatchEvent(new Event('change'));
+        }
+        
+        // Number inputs
+        if (values.numFlags !== undefined) {
+            console.log('[DEBUG] Setting numFlags to:', values.numFlags);
+            document.getElementById('numFlags').value = values.numFlags;
+            document.getElementById('numFlagsValue').textContent = values.numFlags;
+        }
+        if (values.customAttackingZombies !== undefined && values.customAttackingZombies !== '') {
+            console.log('[DEBUG] Setting customAttackingZombies to:', values.customAttackingZombies);
+            document.getElementById('customAttackingZombies').value = values.customAttackingZombies;
+        }
+        if (values.townDay !== undefined) {
+            console.log('[DEBUG] Setting townDay to:', values.townDay, 'Element:', document.getElementById('townDay'));
+            document.getElementById('townDay').value = values.townDay;
+            console.log('[DEBUG] townDay after set:', document.getElementById('townDay').value);
+        }
+        if (values.playersAlive !== undefined) {
+            console.log('[DEBUG] Setting playersAlive to:', values.playersAlive);
+            document.getElementById('playersAlive').value = values.playersAlive;
+            console.log('[DEBUG] playersAlive after set:', document.getElementById('playersAlive').value);
+        }
+        if (values.townPopulation !== undefined) {
+            console.log('[DEBUG] Setting townPopulation to:', values.townPopulation);
+            document.getElementById('townPopulation').value = values.townPopulation;
+        }
+        if (values.townDefense !== undefined) {
+            console.log('[DEBUG] Setting townDefense to:', values.townDefense);
+            document.getElementById('townDefense').value = values.townDefense;
+            console.log('[DEBUG] townDefense after set:', document.getElementById('townDefense').value);
+        }
+        if (values.personalDefenseTiers !== undefined && values.personalDefenseTiers !== '') {
+            console.log('[DEBUG] Setting personalDefenseTiers to:', values.personalDefenseTiers);
+            document.getElementById('personalDefenseTiers').value = values.personalDefenseTiers;
+        }
+        
+        // Door state
+        const doorRadio = document.querySelector(`input[name="doorState"][value="${values.doorState}"]`);
+        if (doorRadio) doorRadio.checked = true;
+        
+        // House level
+        if (values.houseLevel !== undefined) {
+            console.log('[DEBUG] Setting houseLevel to:', values.houseLevel);
+            document.getElementById('houseLevel').value = values.houseLevel;
+            document.getElementById('houseLevelValue').textContent = values.houseLevel;
+            updateBuildingLevelIndicators(values.houseLevel);
+        }
+        
+        // Checkboxes
+        document.getElementById('chaos').checked = values.chaos || false;
+        document.getElementById('devastated').checked = values.devastated || false;
+        
+        // Simulations
+        if (values.simulations !== undefined) {
+            document.getElementById('simulations').value = values.simulations;
+        }
+        
+        // Update dependent field constraints
+        updateDependentConstraints();
+        
+        // Update defense tiers preview
+        updateDefenseTiersPreview();
+        
+        console.log('[DEBUG] loadFormValues completed');
+        
+    } catch (e) {
+        console.warn('Failed to load saved form values:', e);
+    } finally {
+        isLoadingValues = false;  // Re-enable saving
+        console.log('[DEBUG] isLoadingValues set to false');
+    }
+}
+
+// Reset form to default values
+function resetForm() {
+    // Clear localStorage
+    localStorage.removeItem(STORAGE_KEY);
+    
+    // Reset mode
+    const noFlagsRadio = document.querySelector('input[name="mode"][value="no-flags"]');
+    if (noFlagsRadio) {
+        noFlagsRadio.checked = true;
+        noFlagsRadio.dispatchEvent(new Event('change'));
+    }
+    
+    // Reset all number inputs
+    document.getElementById('numFlags').value = defaultValues.numFlags;
+    document.getElementById('numFlagsValue').textContent = defaultValues.numFlags;
+    document.getElementById('customAttackingZombies').value = '';
+    document.getElementById('townDay').value = defaultValues.townDay;
+    document.getElementById('playersAlive').value = defaultValues.playersAlive;
+    document.getElementById('townPopulation').value = defaultValues.townPopulation;
+    document.getElementById('townDefense').value = defaultValues.townDefense;
+    document.getElementById('personalDefenseTiers').value = '';
+    
+    // Reset door state
+    const closedDoor = document.querySelector('input[name="doorState"][value="closed"]');
+    if (closedDoor) closedDoor.checked = true;
+    
+    // Reset house level
+    document.getElementById('houseLevel').value = defaultValues.houseLevel;
+    document.getElementById('houseLevelValue').textContent = defaultValues.houseLevel;
+    updateBuildingLevelIndicators(defaultValues.houseLevel);
+    
+    // Reset checkboxes
+    document.getElementById('chaos').checked = false;
+    document.getElementById('devastated').checked = false;
+    
+    // Reset simulations
+    document.getElementById('simulations').value = defaultValues.simulations;
+    
+    // Reset constraints
+    updateDependentConstraints();
+    
+    // Clear defense preview
+    document.getElementById('defenseTiersPreview').textContent = '';
+    
+    // Clear results
+    document.getElementById('results').innerHTML = `
+        <div class="results-placeholder">
+            <div class="placeholder-icon"><img src="assets/img/icons/chart-simple-solid-full.svg" alt="Chart" style="width: 48px; height: 48px;"></div>
+            <p>Configure your simulation and click "Run Simulation" to see results</p>
+        </div>
+    `;
+}
+
+// Reset button handler
+document.getElementById('resetBtn')?.addEventListener('click', resetForm);
+
+// ============================================================================
+// CASCADING FIELD CONSTRAINTS
+// ============================================================================
+
+// Update constraints for fields that depend on players alive
+function updateDependentConstraints() {
+    const playersAlive = parseInt(document.getElementById('playersAlive').value) || 40;
+    const townPopulationInput = document.getElementById('townPopulation');
+    const numFlagsInput = document.getElementById('numFlags');
+    
+    // Update town population max to players alive
+    townPopulationInput.max = playersAlive;
+    
+    // If current town population exceeds players alive, reduce it
+    if (parseInt(townPopulationInput.value) > playersAlive) {
+        townPopulationInput.value = playersAlive;
+    }
+    
+    // Update num flags max to town population
+    const townPopulation = parseInt(townPopulationInput.value) || 40;
+    numFlagsInput.max = townPopulation;
+    
+    // If current num flags exceeds town population, reduce it
+    if (parseInt(numFlagsInput.value) > townPopulation) {
+        numFlagsInput.value = townPopulation;
+        document.getElementById('numFlagsValue').textContent = townPopulation;
+    }
+}
+
+// Validation: Players Alive vs Town Population
+function validatePlayerCounts() {
+    const playersAlive = parseInt(document.getElementById('playersAlive').value);
+    const townPopulation = parseInt(document.getElementById('townPopulation').value);
+    const playersAliveInput = document.getElementById('playersAlive');
+    const townPopulationInput = document.getElementById('townPopulation');
+    
+    // Remove any existing error states
+    playersAliveInput.style.borderColor = '';
+    townPopulationInput.style.borderColor = '';
+    
+    // Auto-reduce dependent values when players alive decreases
+    updateDependentConstraints();
+    
+    // Validate that players alive >= town population
+    if (playersAlive < townPopulation) {
+        playersAliveInput.style.borderColor = '#dc3545';
+        townPopulationInput.style.borderColor = '#dc3545';
+        return false;
+    }
+    
+    // Save values after validation
+    saveFormValues();
+    
+    return true;
+}
+
 // Update range value displays
 document.querySelectorAll('input[type="range"]').forEach(slider => {
     const valueDisplay = document.getElementById(slider.id + 'Value');
@@ -9,6 +265,9 @@ document.querySelectorAll('input[type="range"]').forEach(slider => {
         if (slider.id === 'houseLevel') {
             updateBuildingLevelIndicators(parseInt(e.target.value));
         }
+        
+        // Save values on any range change
+        saveFormValues();
     });
 });
 
@@ -26,30 +285,32 @@ function updateBuildingLevelIndicators(level) {
 // Initialize building level indicators
 updateBuildingLevelIndicators(parseInt(document.getElementById('houseLevel').value));
 
-// Validation: Players Alive vs Town Population
-function validatePlayerCounts() {
-    const playersAlive = parseInt(document.getElementById('playersAlive').value);
-    const townPopulation = parseInt(document.getElementById('townPopulation').value);
-    const playersAliveInput = document.getElementById('playersAlive');
-    const townPopulationInput = document.getElementById('townPopulation');
-    
-    // Remove any existing error states
-    playersAliveInput.style.borderColor = '';
-    townPopulationInput.style.borderColor = '';
-    
-    // Validate that players alive >= town population (can't have more in town than alive)
-    if (playersAlive < townPopulation) {
-        playersAliveInput.style.borderColor = '#dc3545';
-        townPopulationInput.style.borderColor = '#dc3545';
-        return false;
-    }
-    
-    return true;
-}
-
-// Add validation listeners
+// Add validation and save listeners
 document.getElementById('playersAlive').addEventListener('input', validatePlayerCounts);
-document.getElementById('townPopulation').addEventListener('input', validatePlayerCounts);
+document.getElementById('townPopulation').addEventListener('input', () => {
+    validatePlayerCounts();
+    updateDependentConstraints();  // Update flag max when town population changes
+    saveFormValues();
+});
+
+// Add save listeners to all inputs
+// Use 'input' for text/number fields (fires on every keystroke)
+// Use 'change' for checkboxes, radios, and selects (fires on value change)
+document.querySelectorAll('#simulatorForm input[type="number"], #simulatorForm input[type="text"]').forEach(input => {
+    input.addEventListener('input', saveFormValues);
+});
+document.querySelectorAll('#simulatorForm input[type="checkbox"], #simulatorForm input[type="radio"], #simulatorForm select').forEach(input => {
+    input.addEventListener('change', saveFormValues);
+});
+
+// Load saved values on page load
+// Check if DOM is already ready (script is at end of body)
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadFormValues);
+} else {
+    // DOM is already ready, call immediately
+    loadFormValues();
+}
 
 // Parse defense tiers from input string
 // Formats supported: "38x60, 2x61" or "38*60, 2*61" or "60:38, 61:2"
@@ -311,19 +572,19 @@ function displayResults(results, config) {
         html += '</div>';
         if (results.defenseBrokenPct < 1) {
             html += '<div style="margin-top: 10px; padding: 8px; background: rgba(40, 167, 69, 0.2); border-radius: 4px; font-size: 0.9rem;">';
-            html += '✅ <strong>Excellent defense!</strong> Town is well protected against most attacks.';
+            html += '<strong>Excellent defense!</strong> Town is well protected against most attacks.';
             html += '</div>';
         } else if (results.defenseBrokenPct < 25) {
             html += '<div style="margin-top: 10px; padding: 8px; background: rgba(255, 193, 7, 0.2); border-radius: 4px; font-size: 0.9rem;">';
-            html += '⚠️ <strong>Good defense.</strong> Most attacks are stopped, but some breakthrough.';
+            html += '<strong>Good defense.</strong> Most attacks are stopped, but some breakthrough.';
             html += '</div>';
         } else if (results.defenseBrokenPct < 75) {
             html += '<div style="margin-top: 10px; padding: 8px; background: rgba(255, 152, 0, 0.2); border-radius: 4px; font-size: 0.9rem;">';
-            html += '⚠️ <strong>Moderate defense.</strong> Many attacks break through - consider improving defenses.';
+            html += '<strong>Moderate defense.</strong> Many attacks break through - consider improving defenses.';
             html += '</div>';
         } else {
             html += '<div style="margin-top: 10px; padding: 8px; background: rgba(220, 53, 69, 0.2); border-radius: 4px; font-size: 0.9rem;">';
-            html += '🔴 <strong>Weak defense!</strong> Most attacks break through - urgent defense improvements needed.';
+            html += '<strong>Weak defense!</strong> Most attacks break through - urgent defense improvements needed.';
             html += '</div>';
         }
         html += '</div>';
@@ -351,19 +612,19 @@ function displayResults(results, config) {
             
             if (stats.survivalRate >= 99) {
                 html += '<div style="margin-top: 10px; padding: 8px; background: rgba(40, 167, 69, 0.2); border-radius: 4px; font-size: 0.9rem;">';
-                html += '✅ <strong>Excellent!</strong> Almost no risk of death. Personal defenses are sufficient.';
+                html += '<strong>Excellent!</strong> Almost no risk of death. Personal defenses are sufficient.';
                 html += '</div>';
             } else if (stats.survivalRate >= 95) {
                 html += '<div style="margin-top: 10px; padding: 8px; background: rgba(40, 167, 69, 0.2); border-radius: 4px; font-size: 0.9rem;">';
-                html += '✅ <strong>Very Good!</strong> Low risk of death, but not impossible.';
+                html += '<strong>Very Good!</strong> Low risk of death, but not impossible.';
                 html += '</div>';
             } else if (stats.survivalRate >= 75) {
                 html += '<div style="margin-top: 10px; padding: 8px; background: rgba(255, 193, 7, 0.2); border-radius: 4px; font-size: 0.9rem;">';
-                html += '⚠️ <strong>Risky!</strong> Significant chance of deaths. Consider improving personal defenses.';
+                html += '<strong>Risky!</strong> Significant chance of deaths. Consider improving personal defenses.';
                 html += '</div>';
             } else {
                 html += '<div style="margin-top: 10px; padding: 8px; background: rgba(220, 53, 69, 0.2); border-radius: 4px; font-size: 0.9rem;">';
-                html += '🔴 <strong>Dangerous!</strong> High probability of deaths. Urgent action needed.';
+                html += '<strong>Dangerous!</strong> High probability of deaths. Urgent action needed.';
                 html += '</div>';
             }
             html += '</div>';
@@ -612,13 +873,29 @@ function renderDistributionChart(chartData) {
                 pointRadius: distArray.map((d, i) => i === peakIndex ? 6 : 0),
                 pointBackgroundColor: '#ff8c42',
                 pointBorderColor: '#fff',
-                pointBorderWidth: 2
+                pointBorderWidth: 2,
+                // Make hover detection much easier
+                pointHitRadius: 20,  // Larger click/hover detection area
+                pointHoverRadius: 8,  // Show bigger point on hover
+                pointHoverBackgroundColor: '#ff8c42',
+                pointHoverBorderColor: '#fff',
+                pointHoverBorderWidth: 3
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
             aspectRatio: 2.5,
+            // Make hover/interaction much more forgiving
+            interaction: {
+                mode: 'index',        // Show tooltip for nearest x-value
+                intersect: false,     // Don't require hovering exactly on the line
+                axis: 'x'             // Only consider x-axis distance
+            },
+            hover: {
+                mode: 'index',
+                intersect: false
+            },
             plugins: {
                 legend: {
                     display: false
@@ -633,16 +910,49 @@ function renderDistributionChart(chartData) {
                     }
                 },
                 tooltip: {
+                    enabled: true,
+                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                    titleColor: '#ffa500',
+                    bodyColor: '#fff',
+                    borderColor: '#d97634',
+                    borderWidth: 1,
+                    padding: 12,
+                    displayColors: false,
+                    titleFont: {
+                        size: 14,
+                        weight: 'bold'
+                    },
+                    bodyFont: {
+                        size: 13
+                    },
                     callbacks: {
+                        title: function(context) {
+                            const attacks = context[0].label;
+                            return `${attacks} Zombie Attacks`;
+                        },
                         label: function(context) {
                             const attacks = context.label;
                             const individualProb = context.parsed.y.toFixed(2);
                             const cumulativeProb = cumulativeMap[attacks] ? (cumulativeMap[attacks] * 100).toFixed(2) : '0.00';
                             
                             return [
-                                `Individual: ${individualProb}% chance of exactly ${attacks} attacks`,
-                                `Cumulative: ${cumulativeProb}% chance of ${attacks} or fewer attacks`
+                                `📊 Individual: ${individualProb}%`,
+                                `📈 Cumulative: ${cumulativeProb}%`
                             ];
+                        },
+                        afterBody: function(context) {
+                            const attacks = parseInt(context[0].label);
+                            const cumulativeProb = cumulativeMap[attacks] ? cumulativeMap[attacks] * 100 : 0;
+                            
+                            // Add helpful context about what this means
+                            if (cumulativeProb >= 99) {
+                                return ['', '✅ Very rare to exceed this'];
+                            } else if (cumulativeProb >= 95) {
+                                return ['', '⚠️ Top 5% worst case'];
+                            } else if (cumulativeProb >= 90) {
+                                return ['', '⚠️ Top 10% worst case'];
+                            }
+                            return [];
                         }
                     }
                 },
@@ -731,8 +1041,35 @@ function renderDistributionChart(chartData) {
                         color: 'rgba(255, 255, 255, 0.05)'
                     }
                 }
+            },
+            // Custom plugin for vertical crosshair line
+            onHover: (event, elements, chart) => {
+                chart.canvas.style.cursor = elements.length ? 'pointer' : 'crosshair';
             }
-        }
+        },
+        plugins: [{
+            id: 'crosshairLine',
+            afterDraw: (chart) => {
+                if (chart.tooltip?._active?.length) {
+                    const ctx = chart.ctx;
+                    const activePoint = chart.tooltip._active[0];
+                    const x = activePoint.element.x;
+                    const topY = chart.scales.y.top;
+                    const bottomY = chart.scales.y.bottom;
+                    
+                    // Draw vertical line
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(x, topY);
+                    ctx.lineTo(x, bottomY);
+                    ctx.lineWidth = 1;
+                    ctx.strokeStyle = 'rgba(255, 165, 0, 0.5)';
+                    ctx.setLineDash([3, 3]);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+        }]
     });
 }
 
